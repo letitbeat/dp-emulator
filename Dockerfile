@@ -26,5 +26,5 @@ RUN curl -O https://raw.githubusercontent.com/letitbeat/dp-generator/master/crea
 RUN curl -O https://raw.githubusercontent.com/letitbeat/dp-generator/master/topology.dot
 
 COPY --from=builder /go/src/github.com/letitbeat/dp-emulator .
-
+RUN chmod +x sniffer
 CMD ["/bin/bash"]

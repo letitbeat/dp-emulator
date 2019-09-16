@@ -1,23 +1,23 @@
-package dp_emulator
+package main
 
 import (
-	"time"
-	"log"
 	"flag"
+	"log"
 	"strings"
+	"time"
 
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/pcap"
-	"github.com/google/gopacket/layers"
-	"net"
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
-	"fmt"
-	"net/http"
-	"bytes"
-	"io/ioutil"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 var (
@@ -26,13 +26,11 @@ var (
 	promiscuous  bool          = false
 	timeout      time.Duration = -1 * time.Second
 
-	flagInterfaces	=	flag.String("i", "", "Interface(s) to capture packets i.e eth0 or eth0, s1-eth1, s2-eth2")
-	flagFilter 		= 	flag.String("f", "", "BPF filter string to user")
+	flagInterfaces = flag.String("i", "", "Interface(s) to capture packets i.e eth0 or eth0, s1-eth1, s2-eth2")
+	flagFilter     = flag.String("f", "", "BPF filter string to user")
 
 	wg = new(sync.WaitGroup)
 )
-
-
 
 func main() {
 
@@ -72,21 +70,21 @@ func main() {
 type TransportType uint8
 
 type PacketWrapper struct {
-	Device 		string			`json:device`
-	Type		TransportType	`json:type`
-	SrcIP		net.IP			`json:src_ip`
-	DstIP		net.IP			`json:dst_ip`
-	SrcPort		string			`json:src_port`
-	DstPort		string			`json:dst_port`
-	Payload 	string			`json:payload`
-	CapturedAt	time.Time		`json:captured_at`
+	Device     string        `json:"device"`
+	Type       TransportType `json:"type"`
+	SrcIP      string        `json:"src_ip"`
+	DstIP      string        `json:"dst_ip"`
+	SrcPort    string        `json:"src_port"`
+	DstPort    string        `json:"dst_port"`
+	Payload    string        `json:"payload"`
+	CapturedAt *time.Time    `json:"captured_at"`
 }
 
 const (
-	TCP			TransportType = iota
+	TCP TransportType = iota
 	UDP
 	ICMP
-	)
+)
 
 func sniffDevice(d string, stop chan struct{}) {
 
@@ -104,7 +102,6 @@ func sniffDevice(d string, stop chan struct{}) {
 			log.Fatal("BPF filter error:", err)
 		}
 	}
-
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
@@ -124,14 +121,14 @@ func sniffDevice(d string, stop chan struct{}) {
 
 			p := PacketWrapper{}
 			p.Device = d
-			p.CapturedAt = packet.Metadata().CaptureInfo.Timestamp//time.Now()
+			p.CapturedAt = &packet.Metadata().CaptureInfo.Timestamp //time.Now()
 
 			ip4Layer := packet.Layer(layers.LayerTypeIPv4)
 			if ip4Layer != nil {
 				ip, _ := ip4Layer.(*layers.IPv4)
 				log.Printf("From %s to %s", ip.SrcIP, ip.DstIP)
-				p.SrcIP = ip.SrcIP
-				p.DstIP = ip.DstIP
+				p.SrcIP = ip.SrcIP.String()
+				p.DstIP = ip.DstIP.String()
 			}
 
 			icmpLayer := packet.Layer(layers.LayerTypeICMPv4)
@@ -156,7 +153,7 @@ func sniffDevice(d string, stop chan struct{}) {
 				log.Printf("UDP DstPort: %s", udp.DstPort)
 				log.Printf("UDP SrcPort: %s", udp.SrcPort)
 
-				p.DstPort =	fmt.Sprintf("%s", udp.DstPort)
+				p.DstPort = fmt.Sprintf("%s", udp.DstPort)
 				p.SrcPort = fmt.Sprintf("%s", udp.SrcPort)
 				p.Type = UDP
 			}
@@ -179,7 +176,7 @@ func sendPacket(p PacketWrapper) {
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(p)
 
-	req, err := http.NewRequest("POST", url,  b)
+	req, err := http.NewRequest("POST", url, b)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
 	client := &http.Client{}
